@@ -5,6 +5,7 @@ import zipfile
 import re
 import shutil
 import time
+from PIL import Image
 
 st.set_page_config(page_title="Webtoon Capture Tool", layout="centered")
 st.title("Webtoon Screenshot Tool")
@@ -12,6 +13,15 @@ st.title("Webtoon Screenshot Tool")
 uploaded_file = st.file_uploader("Upload URL txt file", type=["txt"])
 project_name = st.text_input("Project name", value="webtoon_project")
 shots = st.number_input("Screenshots per chapter", min_value=1, max_value=200, value=95)
+
+merge_enabled = st.checkbox("Merge screenshots by chapter", value=True)
+
+merge_output = st.selectbox(
+    "Merge output format",
+    ["PDF", "Long JPG"],
+    index=0
+)
+
 start = st.button("Start Capture")
 
 def safe_name(name):
@@ -73,9 +83,50 @@ def close_popup(page):
     except:
         pass
 
-def capture(urls, output_dir, shots, status_box, progress_bar):
+def make_chapter_pdf(folder):
+    files = sorted(folder.glob("*.jpg"))
+    if not files:
+        return None
+
+    images = [Image.open(f).convert("RGB") for f in files]
+
+    pdf_path = folder.parent / f"{folder.name}.pdf"
+
+    images[0].save(pdf_path, save_all=True, append_images=images[1:])
+
+    for img in images:
+        img.close()
+
+    return pdf_path
+
+def make_chapter_long_jpg(folder):
+    files = sorted(folder.glob("*.jpg"))
+    if not files:
+        return None
+
+    images = [Image.open(f).convert("RGB") for f in files]
+
+    width = max(img.width for img in images)
+    height = sum(img.height for img in images)
+
+    merged = Image.new("RGB", (width, height), "white")
+
+    y = 0
+    for img in images:
+        merged.paste(img, (0, y))
+        y += img.height
+
+    out_path = folder.parent / f"{folder.name}_merged.jpg"
+    merged.save(out_path, "JPEG", quality=85)
+
+    for img in images:
+        img.close()
+
+    return out_path
+
+def capture(urls, output_dir, shots, status_box, progress_bar, merge_enabled, merge_output):
     total_steps = len(urls) * int(shots)
-    done_steps = 0
+    done = 0
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -99,19 +150,26 @@ def capture(urls, output_dir, shots, status_box, progress_bar):
                 path = folder / f"{i:03d}.jpg"
                 page.screenshot(path=str(path), type="jpeg", quality=80)
 
-                done_steps += 1
-                progress = done_steps / total_steps
+                done += 1
+                progress = done / total_steps
 
                 progress_bar.progress(progress)
                 status_box.info(
-                    f"Capturing {folder.name} ({idx}/{len(urls)}) — "
-                    f"Screenshot {i}/{shots} — Overall {int(progress * 100)}%"
+                    f"{folder.name} | Shot {i}/{shots} | Overall {int(progress*100)}%"
                 )
 
                 page.mouse.wheel(0, 1000)
                 page.wait_for_timeout(350)
 
             page.close()
+
+            if merge_enabled:
+                status_box.info(f"Merging {folder.name} as {merge_output}...")
+
+                if merge_output == "PDF":
+                    make_chapter_pdf(folder)
+                else:
+                    make_chapter_long_jpg(folder)
 
         browser.close()
 
@@ -121,9 +179,9 @@ def zip_folder(folder):
         zip_path.unlink()
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-        for file in folder.rglob("*"):
-            if file.is_file():
-                z.write(file, file.relative_to(folder.parent))
+        for f in folder.rglob("*"):
+            if f.is_file():
+                z.write(f, f.relative_to(folder.parent))
 
     return zip_path
 
@@ -146,12 +204,20 @@ if start:
         progress_bar = st.progress(0)
         status_box = st.empty()
 
-        capture(urls, output_dir, int(shots), status_box, progress_bar)
+        capture(
+            urls,
+            output_dir,
+            int(shots),
+            status_box,
+            progress_bar,
+            merge_enabled,
+            merge_output
+        )
 
         zip_path = zip_folder(output_dir)
 
         progress_bar.progress(1.0)
-        st.success("Capture complete.")
+        st.success("Done!")
 
         with open(zip_path, "rb") as f:
             st.download_button(
