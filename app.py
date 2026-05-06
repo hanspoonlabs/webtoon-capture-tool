@@ -73,7 +73,10 @@ def close_popup(page):
     except:
         pass
 
-def capture(urls, output_dir, shots, status):
+def capture(urls, output_dir, shots, status_box, progress_bar):
+    total_steps = len(urls) * int(shots)
+    done_steps = 0
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
 
@@ -81,7 +84,7 @@ def capture(urls, output_dir, shots, status):
             folder = output_dir / chapter_name(url, idx)
             folder.mkdir(parents=True, exist_ok=True)
 
-            status.write(f"Capturing {folder.name} ({idx}/{len(urls)})")
+            status_box.info(f"Starting {folder.name} ({idx}/{len(urls)})")
 
             page = browser.new_page(viewport={"width": 900, "height": 1300})
             page.goto(url, wait_until="domcontentloaded")
@@ -95,6 +98,16 @@ def capture(urls, output_dir, shots, status):
             for i in range(1, int(shots) + 1):
                 path = folder / f"{i:03d}.jpg"
                 page.screenshot(path=str(path), type="jpeg", quality=80)
+
+                done_steps += 1
+                progress = done_steps / total_steps
+
+                progress_bar.progress(progress)
+                status_box.info(
+                    f"Capturing {folder.name} ({idx}/{len(urls)}) — "
+                    f"Screenshot {i}/{shots} — Overall {int(progress * 100)}%"
+                )
+
                 page.mouse.wheel(0, 1000)
                 page.wait_for_timeout(350)
 
@@ -128,14 +141,18 @@ if start:
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        status = st.empty()
         st.info(f"{len(urls)} URLs found. Starting capture...")
 
-        capture(urls, output_dir, shots, status)
+        progress_bar = st.progress(0)
+        status_box = st.empty()
+
+        capture(urls, output_dir, int(shots), status_box, progress_bar)
 
         zip_path = zip_folder(output_dir)
 
-        st.success("Done.")
+        progress_bar.progress(1.0)
+        st.success("Capture complete.")
+
         with open(zip_path, "rb") as f:
             st.download_button(
                 "Download ZIP",
