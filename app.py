@@ -6,7 +6,6 @@ import re
 import shutil
 import time
 from PIL import Image
-import numpy as np
 
 st.set_page_config(page_title="Webtoon Screenshot Tool", layout="centered")
 st.title("Webtoon Screenshot Tool")
@@ -17,11 +16,6 @@ shots = st.number_input("Screenshots per chapter", min_value=1, max_value=200, v
 
 merge_enabled = st.checkbox("Merge screenshots by chapter", value=True)
 merge_output = st.selectbox("Merge output format", ["PDF", "Long JPG"], index=0)
-
-remove_overlap = st.checkbox(
-    "Remove overlap when merging Long JPG",
-    value=True
-)
 
 start = st.button("Start Capture")
 
@@ -95,85 +89,27 @@ def make_chapter_pdf(folder):
     images = [Image.open(f).convert("RGB") for f in files]
     pdf_path = folder.parent / f"{folder.name}.pdf"
 
-    images[0].save(
-        pdf_path,
-        save_all=True,
-        append_images=images[1:]
-    )
+    images[0].save(pdf_path, save_all=True, append_images=images[1:])
 
     for img in images:
         img.close()
 
     return pdf_path
 
-def find_overlap(prev_img, curr_img, max_overlap=500):
-    prev = prev_img.convert("L").resize(
-        (300, int(prev_img.height * 300 / prev_img.width))
-    )
-    curr = curr_img.convert("L").resize(
-        (300, int(curr_img.height * 300 / curr_img.width))
-    )
-
-    prev_arr = np.array(prev)
-    curr_arr = np.array(curr)
-
-    max_overlap = min(
-        max_overlap,
-        prev_arr.shape[0] // 2,
-        curr_arr.shape[0] // 2
-    )
-
-    best_overlap = 0
-    best_score = float("inf")
-
-    for overlap in range(50, max_overlap):
-        prev_slice = prev_arr[-overlap:, :]
-        curr_slice = curr_arr[:overlap, :]
-
-        score = np.mean(
-            np.abs(prev_slice.astype("float") - curr_slice.astype("float"))
-        )
-
-        if score < best_score:
-            best_score = score
-            best_overlap = overlap
-
-    if best_score > 25:
-        return 0
-
-    scale = curr_img.height / curr_arr.shape[0]
-    return int(best_overlap * scale)
-
-def make_chapter_long_jpg(folder, remove_overlap=True):
+def make_chapter_long_jpg(folder):
     files = sorted(folder.glob("*.jpg"))
     if not files:
         return None
 
     images = [Image.open(f).convert("RGB") for f in files]
 
-    processed = [images[0]]
-
-    for i in range(1, len(images)):
-        prev_img = processed[-1]
-        curr_img = images[i]
-
-        if remove_overlap:
-            overlap = find_overlap(prev_img, curr_img)
-
-            if overlap > 0 and overlap < curr_img.height:
-                curr_img = curr_img.crop(
-                    (0, overlap, curr_img.width, curr_img.height)
-                )
-
-        processed.append(curr_img)
-
-    width = max(img.width for img in processed)
-    height = sum(img.height for img in processed)
+    width = max(img.width for img in images)
+    height = sum(img.height for img in images)
 
     merged = Image.new("RGB", (width, height), "white")
 
     y = 0
-    for img in processed:
+    for img in images:
         merged.paste(img, (0, y))
         y += img.height
 
@@ -185,16 +121,7 @@ def make_chapter_long_jpg(folder, remove_overlap=True):
 
     return out_path
 
-def capture(
-    urls,
-    output_dir,
-    shots,
-    status_box,
-    progress_bar,
-    merge_enabled,
-    merge_output,
-    remove_overlap
-):
+def capture(urls, output_dir, shots, status_box, progress_bar, merge_enabled, merge_output):
     total_steps = len(urls) * shots
     done = 0
 
@@ -218,12 +145,7 @@ def capture(
 
             for i in range(1, shots + 1):
                 path = folder / f"{i:03d}.jpg"
-
-                page.screenshot(
-                    path=str(path),
-                    type="jpeg",
-                    quality=80
-                )
+                page.screenshot(path=str(path), type="jpeg", quality=80)
 
                 done += 1
                 progress = done / total_steps
@@ -244,7 +166,7 @@ def capture(
                 if merge_output == "PDF":
                     make_chapter_pdf(folder)
                 elif merge_output == "Long JPG":
-                    make_chapter_long_jpg(folder, remove_overlap)
+                    make_chapter_long_jpg(folder)
 
         browser.close()
 
@@ -282,14 +204,13 @@ if start:
         status_box = st.empty()
 
         capture(
-            urls=urls,
-            output_dir=output_dir,
-            shots=int(shots),
-            status_box=status_box,
-            progress_bar=progress_bar,
-            merge_enabled=merge_enabled,
-            merge_output=merge_output,
-            remove_overlap=remove_overlap
+            urls,
+            output_dir,
+            int(shots),
+            status_box,
+            progress_bar,
+            merge_enabled,
+            merge_output
         )
 
         zip_path = zip_folder(output_dir)
