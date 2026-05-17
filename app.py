@@ -138,10 +138,13 @@ def capture(urls, output_dir, shots, status_box, progress_bar, merge_enabled, me
             page.goto(url, wait_until="domcontentloaded")
             page.wait_for_timeout(2500)
 
-            close_popup(page)
+            # 팝업 여러 번 체크
+for _ in range(5):
+    close_popup(page)
+    page.wait_for_timeout(1000)
 
-            page.evaluate("window.scrollTo(0, 0)")
-            page.wait_for_timeout(1000)
+page.evaluate("window.scrollTo(0, 0)")
+page.wait_for_timeout(1000)
 
             for i in range(1, shots + 1):
                 path = folder / f"{i:03d}.jpg"
