@@ -22,13 +22,16 @@ start = st.button("Start Capture")
 SCROLL_AMOUNT = 1250
 WAIT_AFTER_SCROLL = 400
 
+
 def safe_name(name):
     return re.sub(r"[^a-zA-Z0-9_-]+", "_", name).strip("_") or f"project_{int(time.time())}"
+
 
 def chapter_name(url, idx):
     m = re.search(r"chapter-(\d+)", url)
     no = m.group(1) if m else str(idx)
     return f"chapter_{int(no):03d}"
+
 
 def close_popup(page):
     selectors = [
@@ -81,6 +84,7 @@ def close_popup(page):
     except:
         pass
 
+
 def make_chapter_pdf(folder):
     files = sorted(folder.glob("*.jpg"))
     if not files:
@@ -95,6 +99,7 @@ def make_chapter_pdf(folder):
         img.close()
 
     return pdf_path
+
 
 def make_chapter_long_jpg(folder):
     files = sorted(folder.glob("*.jpg"))
@@ -121,6 +126,7 @@ def make_chapter_long_jpg(folder):
 
     return out_path
 
+
 def capture(urls, output_dir, shots, status_box, progress_bar, merge_enabled, merge_output):
     total_steps = len(urls) * shots
     done = 0
@@ -139,12 +145,12 @@ def capture(urls, output_dir, shots, status_box, progress_bar, merge_enabled, me
             page.wait_for_timeout(2500)
 
             # 팝업 여러 번 체크
-for _ in range(5):
-    close_popup(page)
-    page.wait_for_timeout(1000)
+            for _ in range(5):
+                close_popup(page)
+                page.wait_for_timeout(1000)
 
-page.evaluate("window.scrollTo(0, 0)")
-page.wait_for_timeout(1000)
+            page.evaluate("window.scrollTo(0, 0)")
+            page.wait_for_timeout(1000)
 
             for i in range(1, shots + 1):
                 path = folder / f"{i:03d}.jpg"
@@ -173,6 +179,7 @@ page.wait_for_timeout(1000)
 
         browser.close()
 
+
 def zip_folder(folder):
     zip_path = folder.with_suffix(".zip")
 
@@ -185,6 +192,7 @@ def zip_folder(folder):
                 z.write(f, f.relative_to(folder.parent))
 
     return zip_path
+
 
 if start:
     if not uploaded_file:
